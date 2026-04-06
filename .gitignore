@@ -1,0 +1,78 @@
+# Git Ignore for Yolo_model_Team-Super
+# Large files and unnecessary files excluded
+
+# Large model weights (upload to GitHub Releases instead)
+*.pth
+*.pth.zip
+*.pt
+*.ckpt
+*.h5
+*.onnx
+
+# Dataset files (too large)
+*.tar
+*.tar.gz
+*.zip
+desert-kaggle-api/
+Offroad_Segmentation_*/
+*.png
+*.jpg
+*.jpeg
+
+# Extracted folders
+*_extracted/
+predictions/
+masks/
+black_enhancement_test/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs and outputs
+*.log
+*.out
+*.txt
+!requirements.txt
+!README.md
+
+# Temporary files
+tmp/
+temp/
+*.tmp
