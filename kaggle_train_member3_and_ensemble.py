@@ -79,8 +79,10 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Device: {DEVICE}")
 
 # Paths (adjust these based on your Kaggle setup)
-TRAIN_DIR = '/kaggle/input/yolo-training-data/Offroad_Segmentation_Training_Dataset/train'
-VAL_DIR = '/kaggle/input/yolo-training-data/Offroad_Segmentation_Training_Dataset/val'
+# YOUR ACTUAL PATH: /kaggle/input/datasets/adiinamdar/yolo-training-data/
+DATASET_BASE = '/kaggle/input/datasets/adiinamdar/yolo-training-data/Offroad_Segmentation_Training_Dataset'
+TRAIN_DIR = os.path.join(DATASET_BASE, 'train')
+VAL_DIR = os.path.join(DATASET_BASE, 'val')
 
 # Image settings
 IMG_H, IMG_W = 252, 462  # 18x33 tokens for vits14
@@ -371,7 +373,7 @@ MEMBER2_PATH = '/kaggle/input/yolo-training-data/model_augmented_best.pth'   # U
 MEMBER3_PATH = '/kaggle/working/model_member3_new.pth'  # Your newly trained model
 
 # Data paths
-DATASET_PATH = '/kaggle/input/yolo-training-data'
+DATASET_PATH = '/kaggle/input/datasets/adiinamdar/yolo-training-data'
 
 # Image settings
 IMG_H, IMG_W = 252, 462
