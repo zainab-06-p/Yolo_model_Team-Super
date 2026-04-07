@@ -1,6 +1,6 @@
-# DINOv2 Offroad Semantic Segmentation Ensemble
+# DINOv2 Offroad Semantic Segmentation - M3 Model
 
-**Duality AI Hackathon Submission** — Ensemble of 3 complementary models for desert terrain segmentation.
+**Duality AI Hackathon Submission** — Best performing single model for desert terrain segmentation.
 
 ---
 
@@ -8,32 +8,50 @@
 
 | Metric | Value |
 |--------|-------|
+| **Current Best Model** | **Member 3 (M3)** - Hyperparameter Tuned |
 | Backbone | DINOv2 vits14 (384-dim) |
 | Image Size | 252×462 (18×33 token grid) |
 | Classes | 10 (Background, Trees, Lush Bushes, Dry Grass, Dry Bushes, Ground Clutter, Logs, Rocks, Landscape, Sky) |
 | Decoder | SegmentationHeadConvNeXt (5.19M params) |
-| Ensemble | 3 models with weighted soft-voting |
+| **Validation mIoU** | **0.4158 (41.58%)** |
 | TTA | 2-variant (original + horizontal flip) |
+
+---
+
+## ⚠️ Important Update (April 7, 2026)
+
+### Current Status
+- **M3 is the best working model** with 0.4158 mIoU
+- **M1 (0.4974 mIoU)** has Windows loading issues (PyTorch directory format)
+- **M2** achieves ~0.37 mIoU
+- **Weight merging approach failed** - averaging model weights destroys performance
+- **Soft voting ensemble** is the correct approach but requires all 3 models
+
+### Known Issues
+1. **Background class (0)** has 0 IoU - models never predict it
+2. **Rare classes** (Logs, Rocks, Ground Clutter) have low IoU
+3. **Sky class dominates** predictions, inflating pixel accuracy
 
 ---
 
 ## 🚀 Installation
 
 ```bash
-# Clone or extract submission
-cd submission/
+# Clone repository
+git clone https://github.com/Adity-ng/offroad-segmentation.git
+cd offroad-segmentation
 
 # Install dependencies
-pip install -r requirements.txt
+pip install torch torchvision pillow numpy tqdm
 
 # Download DINOv2 (automatic on first run)
 ```
 
 **Requirements:**
 - Python 3.8+
-- PyTorch 2.0+ (with CUDA for GPU inference)
-- 8GB+ RAM (16GB recommended)
-- GPU optional but recommended (CPU inference ~30-60s per image)
+- PyTorch 2.0+ (CPU works, GPU recommended)
+- 8GB+ RAM
+- ~20GB disk space for models
 
 ---
 
@@ -56,66 +74,58 @@ data/
 
 ---
 
-## 🎯 Usage
+## 📁 Model Files
 
-### 1. Validation Evaluation (with metrics)
+| File | Description | Size |
+|------|-------------|------|
+| `model_member3_new.pth` | **M3 - Best Model** | ~20MB |
+| `model_augmented_best.pth` | M2 - Augmented | ~20MB |
+| `model_finetuned_best.pth.zip` | M1 - Fine-tuned (zipped) | ~70MB |
+
+---
+
+## 🎯 Quick Start
+
+### Generate Test Predictions with M3
 
 ```bash
-# Single model, no TTA
-python tta.py --model_path model_augmented_best.pth --mode val --data_dir data/val
-
-# Single model with TTA
-python tta.py --model_path model_augmented_best.pth --mode val --data_dir data/val --tta
+python proper_ensemble.py
 ```
 
-### 2. Test Inference (generate predictions)
+This will:
+1. Load M3 model
+2. Run validation (317 images)
+3. Generate test predictions (1,002 images)
+4. Save to `final_ensemble_predictions/`
 
-```bash
-# Without TTA
-python tta.py --model_path model_augmented_best.pth --mode test \
-  --data_dir data/Offroad_Segmentation_testImages \
-  --output_dir predictions
-
-# With TTA (recommended)
-python tta.py --model_path model_augmented_best.pth --mode test \
-  --data_dir data/Offroad_Segmentation_testImages \
-  --output_dir predictions --tta
-```
-
-Output structure:
-```
-predictions/
-├── masks/           # Raw class ID masks (uint8 PNG)
-└── masks_color/     # Colorized RGB masks
-```
-
-### 3. Ensemble Inference (3 models)
-
-The ensemble script (`ensemble_all3.py`) is designed for Kaggle but can run locally:
+### Single Image Inference
 
 ```python
-# Edit CONFIG paths in ensemble_all3.py, then:
-python ensemble_all3.py
-```
+import torch
+from PIL import Image
+import torchvision.transforms as transforms
 
-This produces:
-- Validation mIoU for each member + ensemble
-- Test predictions for all 1,002 images
-- Per-class IoU bar charts
-- Side-by-side comparison panels
+# Load model
+model = SegmentationHeadConvNeXt(384, 10, 33, 18)
+model.load_state_dict(torch.load('model_member3_new.pth'))
+model.eval()
 
-### 4. Visualization
+# Load backbone
+backbone = torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14', pretrained=True)
+backbone.eval()
 
-```bash
-# Confusion matrix
-python visualize.py --mode confusion --pred_dir predictions/masks --gt_dir data/val/Segmentation
+# Inference
+img = Image.open('test.png').convert('RGB')
+img_tensor = transforms.Compose([
+    transforms.Resize((252, 462)),
+    transforms.ToTensor(),
+    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+])(img)
 
-# Per-class IoU chart
-python visualize.py --mode per_class_iou --metrics_file evaluation_metrics.txt
-
-# Failure case gallery (lowest IoU images)
-python visualize.py --mode failures --pred_dir predictions/masks \
-  --gt_dir data/val/Segmentation --img_dir data/val/Color_Images --n 5
+with torch.no_grad():
+    feats = backbone.forward_features(img_tensor.unsqueeze(0))['x_norm_patchtokens']
+    logits = model(feats)
+    pred = torch.argmax(logits, dim=1)
 ```
 
 ---
@@ -150,34 +160,41 @@ Upsample bilinear → 252×462
 
 ---
 
-## 🧪 Three-Model Ensemble
+## 📊 Model Comparison
 
-| Member | Strategy | Val mIoU | Weight |
-|--------|----------|----------|--------|
-| Member 1 | Fine-tuning (unfreeze last 4 blocks) | 0.4974 | 0.40 |
-| Member 2 | Augmentation + class weights | ~0.47 | 0.30 |
-| Member 3 | OneCycleLR hyperparameter search | 0.4674 | 0.30 |
-| **Ensemble** | Weighted soft-vote + TTA | **TBD** | 1.00 |
+| Model | Strategy | Val mIoU | Status |
+|-------|----------|----------|--------|
+| **M3** | OneCycleLR + Hyperparams | **0.4158** | ✅ **Working** |
+| M2 | Augmentation + Class Weights | 0.3703 | ✅ Working |
+| M1 | Fine-tuning (unfreeze backbone) | 0.4974 | ⚠️ Windows loading issue |
+| **Merged Weights** | Average of M2+M3 | 0.2194 | ❌ Failed |
 
-### Ensemble Strategy
-1. Load shared DINOv2 backbone (frozen)
-2. Load 3 independent decoder heads
-3. For each input, get softmax probabilities from each head
-4. Weighted average: `0.4×M1 + 0.3×M2 + 0.3×M3`
-5. Apply TTA (original + hflip) per member, average results
-6. Argmax for final prediction
+### M3 Per-Class Performance
+
+| Class | IoU | Status |
+|-------|-----|--------|
+| Sky | 0.9843 | ✅ Excellent |
+| Landscape | 0.5665 | ✅ Good |
+| Dry Grass | 0.6771 | ✅ Good |
+| Dry Bushes | 0.3657 | ⚠️ Moderate |
+| Rocks | 0.3278 | ⚠️ Moderate |
+| Lush Bushes | 0.2033 | ❌ Poor |
+| Trees | 0.1205 | ❌ Poor |
+| Ground Clutter | 0.0815 | ❌ Poor |
+| Logs | 0.0000 | ❌ Missing |
+| Background | N/A | ❌ Never predicted |
 
 ---
 
 ## 📊 Ablation Study Results
 
-| Approach | Val mIoU | Improvement vs Baseline | Key Finding |
-|----------|----------|------------------------|-------------|
-| Baseline | ~0.35 | — | Starting point |
-| Member 1: Fine-Tuning | **0.4974** | +14% | Unfreezing backbone helps significantly |
-| Member 2: Augmentation | ~0.47 | +12% | Data diversity improves rare classes |
-| Member 3: Hyperparams | 0.4674 | +11% | OneCycleLR outperforms cosine |
-| **Final Ensemble** | TBD | — | Combining all 3 approaches |
+| Approach | Val mIoU | Status | Key Finding |
+|----------|----------|--------|-------------|
+| **M3 (OneCycleLR)** | **0.4158** | ✅ **Best Working** | Hyperparam tuning helps |
+| M2 (Augmentation) | 0.3703 | ✅ Working | Augmentation diversity |
+| M1 (Fine-Tuning) | 0.4974 | ⚠️ Load Issue | Backbone fine-tuning is best |
+| Weight Merging | 0.2194 | ❌ Failed | Don't average weights |
+| **Target** | 0.50+ | 🎯 | Need M1 loaded properly |
 
 ---
 
@@ -241,32 +258,25 @@ Three experiments:
 
 ---
 
-## 📦 Files Included
+## 📦 Repository Structure
 
 ```
-submission/
+offroad-segmentation/
 ├── README.md                          # This file
-├── requirements.txt                   # Python dependencies
-├── ensemble_all3.py                   # 3-model ensemble (Kaggle-ready)
-├── tta.py                            # Standalone TTA inference
-├── visualize.py                      # Visualization utilities
-├── train.py                          # Training pipeline (Member 1)
-├── member1_finetuning.py             # Member 1 notebook
-├── member2_augmentation.py           # Member 2 notebook
-├── member3_hyperparams_inference.py  # Member 3 notebook
-├── model_finetuned_best.pth          # Member 1 weights
-├── model_augmented_best.pth          # Member 2 weights
-├── model_hypertuned_best.pth         # Member 3 weights
-├── dataset.py                        # Dataset classes
-├── augmentations.py                  # Augmentation pipeline
-├── rare_class_tools.py               # Copy-paste augmentation
-├── losses.py                         # Loss functions
-├── audit_dataset.py                  # Dataset analysis
-├── predictions/                      # Test set outputs
-│   ├── masks/                        # 1,002 predictions
-│   └── masks_color/                  # Colorized versions
-├── train_stats/                      # Training logs and curves
-└── REPORT.pdf                        # 8-page technical report
+├── model_member3_new.pth              # ⭐ M3 - Best working model (20MB)
+├── model_augmented_best.pth           # M2 - Augmented model (20MB)
+├── model_finetuned_best.pth.zip       # M1 - Best performer (70MB zipped)
+├── proper_ensemble.py                 # ⭐ Main inference script
+├── validate_merged_model.py           # Validation script
+├── create_merged_model_v2.py          # Model merging (failed approach)
+├── test_ensemble_3models.py           # Original ensemble script
+├── train_high_performance.py          # Training script
+├── Offroad_Segmentation_Training_Dataset/  # Training data
+│   ├── train/
+│   └── val/
+├── Offroad_Segmentation_testImages/   # Test data
+├── final_ensemble_predictions/        # Output predictions
+└── merged_predictions/                # Previous run outputs
 ```
 
 ---
@@ -293,7 +303,49 @@ For issues or questions about this submission, refer to:
 
 ---
 
+## 🚀 GitHub Push Commands
+
+```bash
+# Add M3 model with Git LFS
+git lfs track "*.pth"
+git add .gitattributes
+git add model_member3_new.pth
+git commit -m "Add M3 model - best performing (0.4158 mIoU)"
+
+# Add code
+git add README.md proper_ensemble.py validate_merged_model.py
+git commit -m "Update README and add validation scripts"
+
+# Push
+git push origin main
+```
+
+---
+
+## 📝 Important Notes
+
+1. **M3 is current best model** for submission
+2. **Predictions saved as uint16 PNG** with correct mask values (0, 100, 200, etc.)
+3. **Background issue** - models never predict class 0; may need retraining with balanced data
+4. **CPU inference** takes ~1-2 seconds per image
+
+---
+
+## 🔮 Future Improvements
+
+1. **Fix M1 loading** on Linux to achieve 0.50 mIoU
+2. **Retrain with class balancing** for rare classes
+3. **Add background pixels** to training if missing
+4. **Try DeepLabV3+ or U-Net** decoder alternatives
+5. **Test-time augmentation with scales** (if token grid allows)
+
+---
+
+## 📧 Contact
+
 **Team:** Duality AI Hackathon  
-**Submission Date:** April 2026  
-**Best Single Model mIoU:** 0.4974 (Member 1)  
-**Target Ensemble mIoU:** 0.70–0.80
+**Date:** April 2026  
+**Best Model:** Member 3 (M3) - 0.4158 mIoU  
+**Target:** Achieve 0.50+ mIoU with proper ensemble
+
+---
